@@ -126,6 +126,18 @@ func (c *Device) RunCommand(cmd string, args ...string) (string, error) {
 	return string(resp), wrapClientError(err, c, "RunCommand")
 }
 
+//Root restart adbd with root permissions
+func (c *Device) Root() (string, error) {
+	conn, err := c.dialDevice()
+	if err != nil {
+		return "", wrapClientError(err, c, "root")
+	}
+	defer conn.Close()
+
+	resp, err := conn.RoundTripSingleResponse([]byte("root"))
+	return string(resp), wrapClientError(err, c, "root")
+}
+
 /*
 Remount, from the official adb command’s docs:
 	Ask adbd to remount the device's filesystem in read-write mode,
