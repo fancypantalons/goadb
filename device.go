@@ -130,12 +130,20 @@ func (c *Device) RunCommand(cmd string, args ...string) (string, error) {
 func (c *Device) Root() (string, error) {
 	conn, err := c.dialDevice()
 	if err != nil {
-		return "", wrapClientError(err, c, "root")
+		return "", wrapClientError(err, c, "Root")
 	}
 	defer conn.Close()
 
-	resp, err := conn.RoundTripSingleResponse([]byte("root"))
-	return string(resp), wrapClientError(err, c, "root")
+	//resp, err := conn.RoundTripSingleResponse([]byte("root"))
+	if err = conn.SendMessage([]byte("root:")); err != nil {
+		return "", wrapClientError(err, c, "Root")
+	}
+	if _, err = conn.ReadStatus("root:"); err != nil {
+		return "", wrapClientError(err, c, "Root")
+	}
+
+	resp, err := conn.ReadUntilEof()
+	return string(resp), wrapClientError(err, c, "Root")
 }
 
 /*
