@@ -3,8 +3,8 @@ package adb
 import (
 	"testing"
 
+	"github.com/JBuchanan-PltSci/goadb/wire"
 	"github.com/stretchr/testify/assert"
-	"github.com/zach-klippenstein/goadb/wire"
 )
 
 func TestGetServerVersion(t *testing.T) {

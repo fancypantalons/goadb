@@ -8,8 +8,8 @@ import (
 	"log"
 	"time"
 
-	adb "github.com/zach-klippenstein/goadb"
-	"github.com/zach-klippenstein/goadb/internal/errors"
+	adb "github.com/JBuchanan-PltSci/goadb"
+	"github.com/JBuchanan-PltSci/goadb/utils/errors"
 )
 
 var (
