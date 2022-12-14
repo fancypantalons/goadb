@@ -143,6 +143,12 @@ func (c *Device) Root() (string, error) {
 	}
 
 	resp, err := conn.ReadUntilEof()
+
+	// The server needs to restart. If we don't sleep we seem to
+	// connect but in an unstable way (i.e. the next commands would fail unpredictably)
+	//TODO there must be some state we can look for rather than just waiting.
+	time.Sleep(5 * time.Second)
+
 	return string(resp), wrapClientError(err, c, "Root")
 }
 
