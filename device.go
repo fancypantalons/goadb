@@ -152,6 +152,56 @@ func (c *Device) Root() (string, error) {
 	return string(resp), wrapClientError(err, c, "Root")
 }
 
+
+// Forward Use the forward command to set up arbitrary port forwarding,
+// which forwards requests on a specific host port to a different port on a device.
+func (c *Device) Forward(hostPort string, devicePort string) (string, error) {
+	conn, err := c.dialDevice()
+	if err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+	defer conn.Close()
+
+	serial ,err := c.Serial()
+	if err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+
+	if err = conn.SendMessage([]byte("host-serial:"+serial+":forward:"+hostPort+";"+devicePort)); err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+	if _, err = conn.ReadStatus("forward"); err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+
+	resp, err := conn.ReadUntilEof()
+	return string(resp), wrapClientError(err, c, "Forward")
+}
+
+// RemoveForward Used to remove a specific forward socket connection.
+func (c *Device) RemoveForward(hostPort string) (string, error) {
+	conn, err := c.dialDevice()
+	if err != nil {
+		return "", wrapClientError(err, c, "RemoveForward")
+	}
+	defer conn.Close()
+
+	serial ,err := c.Serial()
+	if err != nil {
+		return "", wrapClientError(err, c, "RemoveForward")
+	}
+
+	if err = conn.SendMessage([]byte("host-serial:"+serial+":killforward:"+hostPort)); err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+	if _, err = conn.ReadStatus("killforward"); err != nil {
+		return "", wrapClientError(err, c, "Forward")
+	}
+
+	resp, err := conn.ReadUntilEof()
+	return string(resp), wrapClientError(err, c, "RemoveForward")
+}
+
 /*
 Remount, from the official adb command’s docs:
 	Ask adbd to remount the device's filesystem in read-write mode,
