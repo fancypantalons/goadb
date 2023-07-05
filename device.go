@@ -178,8 +178,40 @@ func (c *Device) Forward(hostPort string, devicePort string) (string, error) {
 	return string(resp), wrapClientError(err, c, "Forward")
 }
 
+
+// ListForwards Used to list all the curretly forwarded ports
+func (c *Device) ListForwards(hostPort string) (string, error) {
+
+	conn, err := c.dialDevice()
+	if err != nil {
+		return "", wrapClientError(err, c, "ListForwards")
+	}
+	defer conn.Close()
+
+	serial ,err := c.Serial()
+	if err != nil {
+		return "", wrapClientError(err, c, "ListForwards")
+	}
+
+	//first see if this device is still forwarded
+	list, err := conn.RoundTripSingleResponse([]byte("host-serial:"+serial+":list-forward"))
+
+	if err != nil {
+		return "", wrapClientError(err, c, "ListForwards")
+	}
+
+	return string(list), nil
+}
+
 // RemoveForward Used to remove a specific forward socket connection.
 func (c *Device) RemoveForward(hostPort string) (string, error) {
+
+	list, err := c.ListForwards(hostPort )
+
+	if err != nil {
+		return "", wrapClientError(err, c, "RemoveForward")
+	}
+
 	conn, err := c.dialDevice()
 	if err != nil {
 		return "", wrapClientError(err, c, "RemoveForward")
@@ -191,15 +223,23 @@ func (c *Device) RemoveForward(hostPort string) (string, error) {
 		return "", wrapClientError(err, c, "RemoveForward")
 	}
 
-	if err = conn.SendMessage([]byte("host-serial:"+serial+":killforward:"+hostPort)); err != nil {
-		return "", wrapClientError(err, c, "Forward")
-	}
-	if _, err = conn.ReadStatus("killforward"); err != nil {
-		return "", wrapClientError(err, c, "Forward")
-	}
+	if strings.Contains(string(list), serial) {
 
-	resp, err := conn.ReadUntilEof()
-	return string(resp), wrapClientError(err, c, "RemoveForward")
+		
+		if err = conn.SendMessage([]byte("host-serial:"+serial+":killforward:" + hostPort)); err != nil {
+			return "", wrapClientError(err, c, "RemoveForward")
+		}
+
+		if _, err = conn.ReadStatus("forward"); err != nil {
+			return "", wrapClientError(err, c, "RemoveForward")
+		}
+
+		resp, err := conn.ReadUntilEof()
+
+		return string(resp), wrapClientError(err, c, "RemoveForward")
+	} else {
+		return "", nil
+	}
 }
 
 /*
