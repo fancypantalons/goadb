@@ -6,10 +6,10 @@ import "os"
 // Values are taken from http://linux.die.net/include/bits/stat.h.
 const (
 	ModeDir        uint32 = 0040000
-	ModeSymlink           = 0120000
-	ModeSocket            = 0140000
-	ModeFifo              = 0010000
-	ModeCharDevice        = 0020000
+	ModeSymlink    uint32 = 0120000
+	ModeSocket     uint32 = 0140000
+	ModeFifo       uint32 = 0010000
+	ModeCharDevice uint32 = 0020000
 )
 
 func ParseFileModeFromAdb(modeFromSync uint32) (filemode os.FileMode) {

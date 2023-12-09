@@ -1,6 +1,7 @@
 package adb
 
 import (
+	"context"
 	"io"
 	"strings"
 
@@ -51,6 +52,14 @@ func (s *MockServer) ReadStatus(req string) (string, error) {
 	return s.Status, nil
 }
 
+func (s *MockServer) ReadStatusWithTimeout(ctx context.Context, req string) (string, error) {
+	s.logMethod("ReadStatusWithTimeout")
+	if err := s.getNextErrToReturn(); err != nil {
+		return "", err
+	}
+	return s.Status, nil
+}
+
 func (s *MockServer) ReadMessage() ([]byte, error) {
 	s.logMethod("ReadMessage")
 	if err := s.getNextErrToReturn(); err != nil {
@@ -73,6 +82,24 @@ func (s *MockServer) ReadUntilEof() ([]byte, error) {
 	var data []string
 	for ; s.nextMsgIndex < len(s.Messages); s.nextMsgIndex++ {
 		data = append(data, s.Messages[s.nextMsgIndex])
+	}
+	return []byte(strings.Join(data, "")), nil
+}
+
+func (s *MockServer) ReadUntilEofWithTimeout(ctx context.Context) ([]byte, error) {
+	s.logMethod("ReadUntilEofWithTimeout")
+	if err := s.getNextErrToReturn(); err != nil {
+		return nil, err
+	}
+
+	var data []string
+	for ; s.nextMsgIndex < len(s.Messages); s.nextMsgIndex++ {
+		select {
+		case <-ctx.Done():
+			return nil, errors.WrapErrorf(ctx.Err(), errors.Timeout, "timeout while reading until EOF")
+		default:
+			data = append(data, s.Messages[s.nextMsgIndex])
+		}
 	}
 	return []byte(strings.Join(data, "")), nil
 }

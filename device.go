@@ -1,6 +1,7 @@
 package adb
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -86,6 +87,7 @@ func (c *Device) DeviceInfo() (*DeviceInfo, error) {
 RunCommand runs the specified commands on a shell on the device.
 
 From the Android docs:
+
 	Run 'command arg1 arg2 ...' in a shell on the device, and return
 	its output and error streams. Note that arguments must be separated
 	by spaces. If an argument contains a space, it must be quoted with
@@ -93,6 +95,7 @@ From the Android docs:
 	will go very wrong.
 
 	Note that this is the non-interactive version of "adb shell"
+
 Source: https://android.googlesource.com/platform/system/core/+/master/adb/SERVICES.TXT
 
 This method quotes the arguments for you, and will return an error if any of them
@@ -118,11 +121,19 @@ func (c *Device) RunCommand(cmd string, args ...string) (string, error) {
 	if err = conn.SendMessage([]byte(req)); err != nil {
 		return "", wrapClientError(err, c, "RunCommand")
 	}
-	if _, err = conn.ReadStatus(req); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err = conn.ReadStatusWithTimeout(ctx, req); err != nil {
 		return "", wrapClientError(err, c, "RunCommand")
 	}
 
-	resp, err := conn.ReadUntilEof()
+	resp, err := conn.ReadUntilEofWithTimeout(ctx)
+	if err != nil {
+		fmt.Println("RunCommand, ReadUntilEof done, err:", ErrorWithCauseChain(err))
+	}
+
 	return string(resp), wrapClientError(err, c, "RunCommand")
 }
 
@@ -152,7 +163,6 @@ func (c *Device) Root() (string, error) {
 	return string(resp), wrapClientError(err, c, "Root")
 }
 
-
 // Forward Use the forward command to set up arbitrary port forwarding,
 // which forwards requests on a specific host port to a different port on a device.
 func (c *Device) Forward(hostPort string, devicePort string) (string, error) {
@@ -162,12 +172,12 @@ func (c *Device) Forward(hostPort string, devicePort string) (string, error) {
 	}
 	defer conn.Close()
 
-	serial ,err := c.Serial()
+	serial, err := c.Serial()
 	if err != nil {
 		return "", wrapClientError(err, c, "Forward")
 	}
 
-	if err = conn.SendMessage([]byte("host-serial:"+serial+":forward:"+hostPort+";"+devicePort)); err != nil {
+	if err = conn.SendMessage([]byte("host-serial:" + serial + ":forward:" + hostPort + ";" + devicePort)); err != nil {
 		return "", wrapClientError(err, c, "Forward")
 	}
 	if _, err = conn.ReadStatus("forward"); err != nil {
@@ -178,7 +188,6 @@ func (c *Device) Forward(hostPort string, devicePort string) (string, error) {
 	return string(resp), wrapClientError(err, c, "Forward")
 }
 
-
 // ListForwards Used to list all the curretly forwarded ports
 func (c *Device) ListForwards(hostPort string) (string, error) {
 
@@ -188,13 +197,13 @@ func (c *Device) ListForwards(hostPort string) (string, error) {
 	}
 	defer conn.Close()
 
-	serial ,err := c.Serial()
+	serial, err := c.Serial()
 	if err != nil {
 		return "", wrapClientError(err, c, "ListForwards")
 	}
 
 	//first see if this device is still forwarded
-	list, err := conn.RoundTripSingleResponse([]byte("host-serial:"+serial+":list-forward"))
+	list, err := conn.RoundTripSingleResponse([]byte("host-serial:" + serial + ":list-forward"))
 
 	if err != nil {
 		return "", wrapClientError(err, c, "ListForwards")
@@ -206,7 +215,7 @@ func (c *Device) ListForwards(hostPort string) (string, error) {
 // RemoveForward Used to remove a specific forward socket connection.
 func (c *Device) RemoveForward(hostPort string) (string, error) {
 
-	list, err := c.ListForwards(hostPort )
+	list, err := c.ListForwards(hostPort)
 
 	if err != nil {
 		return "", wrapClientError(err, c, "RemoveForward")
@@ -218,15 +227,14 @@ func (c *Device) RemoveForward(hostPort string) (string, error) {
 	}
 	defer conn.Close()
 
-	serial ,err := c.Serial()
+	serial, err := c.Serial()
 	if err != nil {
 		return "", wrapClientError(err, c, "RemoveForward")
 	}
 
 	if strings.Contains(string(list), serial) {
 
-		
-		if err = conn.SendMessage([]byte("host-serial:"+serial+":killforward:" + hostPort)); err != nil {
+		if err = conn.SendMessage([]byte("host-serial:" + serial + ":killforward:" + hostPort)); err != nil {
 			return "", wrapClientError(err, c, "RemoveForward")
 		}
 
@@ -244,11 +252,13 @@ func (c *Device) RemoveForward(hostPort string) (string, error) {
 
 /*
 Remount, from the official adb command’s docs:
+
 	Ask adbd to remount the device's filesystem in read-write mode,
 	instead of read-only. This is usually necessary before performing
 	an "adb sync" or "adb push" request.
 	This request may not succeed on certain builds which do not allow
 	that.
+
 Source: https://android.googlesource.com/platform/system/core/+/master/adb/SERVICES.TXT
 */
 func (c *Device) Remount() (string, error) {

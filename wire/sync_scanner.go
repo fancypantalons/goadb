@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"os"
@@ -35,6 +36,10 @@ func NewSyncScanner(r io.Reader) SyncScanner {
 
 func (s *realSyncScanner) ReadStatus(req string) (string, error) {
 	return readStatusFailureAsError(s.Reader, req, readInt32)
+}
+
+func (s *realSyncScanner) ReadStatusWithTimeout(ctx context.Context, req string) (string, error) {
+	return readStatusFailureAsErrorWithTimeout(ctx, s.Reader, req, readInt32WithTimeout)
 }
 
 func (s *realSyncScanner) ReadInt32() (int32, error) {

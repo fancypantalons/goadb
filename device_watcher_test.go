@@ -70,7 +70,7 @@ func TestCalculateStateDiffsOneAdded(t *testing.T) {
 	diffs := calculateStateDiffs(oldStates, newStates)
 
 	assertContainsOnly(t, []DeviceStateChangedEvent{
-		DeviceStateChangedEvent{"serial", StateDisconnected, StateOffline},
+		{"serial", StateDisconnected, StateOffline},
 	}, diffs)
 }
 

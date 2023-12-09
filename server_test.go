@@ -62,7 +62,7 @@ func TestNewServer_CustomConfig(t *testing.T) {
 	assert.IsType(t, MockDialer{}, server.config.Dialer)
 	assert.Equal(t, "foobar", server.config.Host)
 	assert.Equal(t, 1, server.config.Port)
-	assert.Equal(t, fmt.Sprintf("foobar:1"), server.address)
+	assert.Equal(t, "foobar:1", server.address)
 	assert.Equal(t, "/bin/adb", server.config.PathToAdb)
 }
 

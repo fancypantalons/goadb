@@ -24,11 +24,11 @@ func TestGetAttribute(t *testing.T) {
 func TestGetDeviceInfo(t *testing.T) {
 	deviceLister := func() ([]*DeviceInfo, error) {
 		return []*DeviceInfo{
-			&DeviceInfo{
+			{
 				Serial:  "abc",
 				Product: "Foo",
 			},
-			&DeviceInfo{
+			{
 				Serial:  "def",
 				Product: "Bar",
 			},
