@@ -1,6 +1,6 @@
-module github.com/JBuchanan-PltSci/goadb
+module github.com/fancypantalons/goadb
 
-go 1.18
+go 1.21.4
 
 require (
 	github.com/cheggaaa/pb v1.0.29

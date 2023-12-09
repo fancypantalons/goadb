@@ -1,6 +1,6 @@
 package wire
 
-import errors "github.com/JBuchanan-PltSci/goadb/utils/errors"
+import errors "github.com/fancypantalons/goadb/utils/errors"
 
 const (
 	// The official implementation of adb imposes an undocumented 255-byte limit

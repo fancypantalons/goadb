@@ -1,6 +1,6 @@
 package adb
 
-import "github.com/JBuchanan-PltSci/goadb/utils/errors"
+import "github.com/fancypantalons/goadb/utils/errors"
 
 // DeviceState represents one of the 3 possible states adb will report devices.
 // A device can be communicated with when it's in StateOnline.

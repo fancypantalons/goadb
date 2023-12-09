@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JBuchanan-PltSci/goadb/utils/errors"
-	"github.com/JBuchanan-PltSci/goadb/wire"
+	"github.com/fancypantalons/goadb/utils/errors"
+	"github.com/fancypantalons/goadb/wire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

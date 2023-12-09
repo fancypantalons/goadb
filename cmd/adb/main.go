@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/JBuchanan-PltSci/goadb"
+	"github.com/fancypantalons/goadb"
 	"github.com/cheggaaa/pb"
 	"gopkg.in/alecthomas/kingpin.v2"
 )

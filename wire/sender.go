@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/JBuchanan-PltSci/goadb/utils/errors"
+	"github.com/fancypantalons/goadb/utils/errors"
 )
 
 // Sender sends messages to the server.

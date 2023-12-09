@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"strconv"
 
-	"github.com/JBuchanan-PltSci/goadb/utils/errors"
+	"github.com/fancypantalons/goadb/utils/errors"
 )
 
 // TODO(zach): All EOF errors returned from networoking calls should use ConnectionResetError.

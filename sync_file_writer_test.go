@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 	"strings"
 
-	"github.com/JBuchanan-PltSci/goadb/wire"
+	"github.com/fancypantalons/goadb/wire"
 	"github.com/stretchr/testify/assert"
 )
 
