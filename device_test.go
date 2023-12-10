@@ -112,6 +112,10 @@ func TestPrepareCommandLineArgWithDoubleQuoteFails(t *testing.T) {
 	assert.Equal(t, "arg at index 0 contains an invalid double quote: quoted\"arg", message(err))
 }
 
+//
+// TODO: Add a test for GetDebuggablePids
+//
+
 func code(err error) errors.ErrCode {
 	return err.(*errors.Err).Code
 }

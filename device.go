@@ -317,6 +317,51 @@ func (c *Device) OpenWrite(path string, perms os.FileMode, mtime time.Time) (io.
 	return writer, wrapClientError(err, c, "OpenWrite(%s)", path)
 }
 
+// Using the 'jdwp' command, return a list of PIDs that have an available
+// JDWP endpoint.
+//
+// Note, the 'jdwp' command is odd in that rather than just finding PIDs
+// and then immediately returning, it just sits there returning new IDs
+// as they become available.  That's nice if you run this command before
+// a debuggable app has started, but it means it doesn't actually, you know,
+// stop.
+//
+// So this call includes a timeout where it'll wait for the indicated time
+// and then terminate the command and return the set of found PIDs.
+func (c *Device) GetDebuggablePids(timeout time.Duration) ([]string, error) {
+	conn, err := c.dialDevice()
+	if err != nil {
+		return nil, wrapClientError(err, c, "jdwp")
+	}
+	defer conn.Close()
+
+	req := "jdwp"
+
+	// The jdwp command doesn't terminate normally.  Instead it sits there
+	// returning PIDs.  So we have to run it, read what we can, then time
+	// out.
+	if err = conn.SendMessage([]byte(req)); err != nil {
+		return nil, wrapClientError(err, c, "jdwp")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var status string
+
+	if status, err = conn.ReadStatusWithTimeout(ctx, req); err != nil {
+		return nil, wrapClientError(err, c, "jdwp")
+	}
+
+	if status != wire.StatusSuccess {
+		return nil, errors.AssertionErrorf("jdwp returns bad status: %s", status)
+	}
+
+	fmt.Println("Aight, we good, reading")
+
+	return conn.ReadLinesWithTimeout(ctx)
+}
+
 // getAttribute returns the first message returned by the server by running
 // <host-prefix>:<attr>, where host-prefix is determined from the DeviceDescriptor.
 func (c *Device) getAttribute(attr string) (string, error) {

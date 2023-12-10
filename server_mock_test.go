@@ -104,6 +104,25 @@ func (s *MockServer) ReadUntilEofWithTimeout(ctx context.Context) ([]byte, error
 	return []byte(strings.Join(data, "")), nil
 }
 
+func (s *MockServer) ReadLinesWithTimeout(ctx context.Context) ([]string, error) {
+	s.logMethod("ReadLinesWithTimeout")
+	if err := s.getNextErrToReturn(); err != nil {
+		return nil, err
+	}
+
+	var data []string
+
+	for ; s.nextMsgIndex < len(s.Messages); s.nextMsgIndex++ {
+		select {
+		case <-ctx.Done():
+			return nil, errors.WrapErrorf(ctx.Err(), errors.Timeout, "timeout while reading until EOF")
+		default:
+			data = append(data, s.Messages[s.nextMsgIndex])
+		}
+	}
+	return data, nil
+}
+
 func (s *MockServer) SendMessage(msg []byte) error {
 	s.logMethod("SendMessage")
 	if err := s.getNextErrToReturn(); err != nil {
