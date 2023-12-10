@@ -137,7 +137,7 @@ func (c *Device) RunCommand(cmd string, args ...string) (string, error) {
 	return string(resp), wrapClientError(err, c, "RunCommand")
 }
 
-//Root restart adbd with root permissions
+// Root restart adbd with root permissions
 func (c *Device) Root() (string, error) {
 	conn, err := c.dialDevice()
 	if err != nil {
