@@ -3,10 +3,8 @@ package wire
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"strconv"
-	"sync"
 
 	"github.com/fancypantalons/goadb/utils/errors"
 )
@@ -69,10 +67,6 @@ func (s *realScanner) ReadStatus(req string) (string, error) {
 	return readStatusFailureAsError(s.reader, req, readHexLength)
 }
 
-func (s *realScanner) ReadStatusWithTimeout(ctx context.Context, req string) (string, error) {
-	return readStatusFailureAsErrorWithTimeout(ctx, s.reader, req, readHexLengthWithTimeout)
-}
-
 func (s *realScanner) ReadMessage() ([]byte, error) {
 	return readMessage(s.reader, readHexLength)
 }
@@ -83,59 +77,6 @@ func (s *realScanner) ReadUntilEof() ([]byte, error) {
 		return nil, errors.WrapErrorf(err, errors.NetworkError, "error reading until EOF")
 	}
 	return data, nil
-}
-
-func (s *realScanner) ReadUntilEofWithTimeout(ctx context.Context) ([]byte, error) {
-	dataChan := make(chan []byte)
-	errChan := make(chan error)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		var data []byte
-
-		buf := make([]byte, 4096)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				n, err := s.reader.Read(buf)
-
-				if err != nil {
-					if err == io.EOF {
-						dataChan <- data
-						return
-					} else {
-						errChan <- errors.WrapErrorf(err, errors.NetworkError, "error reading until EOF")
-						return
-					}
-				}
-				data = append(data, buf[:n]...)
-			}
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-
-		close(dataChan)
-		close(errChan)
-	}()
-
-	select {
-	case data := <-dataChan:
-		return data, nil
-	case err := <-errChan:
-		return nil, err
-	case <-ctx.Done():
-		return nil, errors.WrapErrorf(ctx.Err(), errors.Timeout, "timeout while reading until EOF")
-	}
 }
 
 func (s *realScanner) NewSyncScanner() SyncScanner {
@@ -151,7 +92,6 @@ var _ Scanner = &realScanner{}
 // lengthReader is a func that readMessage uses to read message length.
 // See readHexLength and readInt32.
 type lengthReader func(io.Reader) (int, error)
-type lengthReaderWithTimeout func(context.Context, io.Reader) (int, error)
 
 // Reads the status, and if failure, reads the message and returns it as an error.
 // If the status is success, doesn't read the message.
@@ -176,26 +116,6 @@ func readStatusFailureAsError(r io.Reader, req string, messageLengthReader lengt
 	return status, nil
 }
 
-func readStatusFailureAsErrorWithTimeout(ctx context.Context, r io.Reader, req string, messageLengthReader lengthReaderWithTimeout) (string, error) {
-	status, err := readOctetStringWithTimeout(ctx, req, r)
-
-	if err != nil {
-		return "", errors.WrapErrorf(err, errors.NetworkError, "error reading status for %s", req)
-	}
-
-	if isFailureStatus(status) {
-		msg, err := readMessageWithTimeout(ctx, r, messageLengthReader)
-		if err != nil {
-			return "", errors.WrapErrorf(err, errors.NetworkError,
-				"server returned error for %s, but couldn't read the error message", req)
-		}
-
-		return "", adbServerError(req, string(msg))
-	}
-
-	return status, nil
-}
-
 func readOctetString(description string, r io.Reader) (string, error) {
 	octet := make([]byte, 4)
 	n, err := io.ReadFull(r, octet)
@@ -209,39 +129,6 @@ func readOctetString(description string, r io.Reader) (string, error) {
 	return string(octet), nil
 }
 
-func readOctetStringWithTimeout(ctx context.Context, description string, r io.Reader) (string, error) {
-	octet := make([]byte, 4)
-
-	nChan := make(chan int)
-	errChan := make(chan error)
-
-	go func() {
-		defer close(nChan)
-		defer close(errChan)
-
-		n, err := io.ReadFull(r, octet)
-		if err == io.ErrUnexpectedEOF {
-			errChan <- errIncompleteMessage(description, n, 4)
-			return
-		} else if err != nil {
-			errChan <- errors.WrapErrorf(err, errors.NetworkError, "error reading "+description)
-			return
-		}
-
-		nChan <- n
-	}()
-
-	select {
-	case n := <-nChan:
-		fmt.Println("readOctetStringWithTimeout, ReadFull done, n:", n)
-		return string(octet), nil
-	case err := <-errChan:
-		return "", err
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-}
-
 // readMessage reads a length from r, then reads length bytes and returns them.
 // lengthReader is the function used to read the length. Most operations encode
 // length as a hex string (readHexLength), but sync operations use little-endian
@@ -250,25 +137,6 @@ func readMessage(r io.Reader, lengthReader lengthReader) ([]byte, error) {
 	var err error
 
 	length, err := lengthReader(r)
-	if err != nil {
-		return nil, err
-	}
-
-	data := make([]byte, length)
-	n, err := io.ReadFull(r, data)
-
-	if err != nil && err != io.ErrUnexpectedEOF {
-		return data, errors.WrapErrorf(err, errors.NetworkError, "error reading message data")
-	} else if err == io.ErrUnexpectedEOF {
-		return data, errIncompleteMessage("message data", n, length)
-	}
-	return data, nil
-}
-
-func readMessageWithTimeout(ctx context.Context, r io.Reader, lengthReader lengthReaderWithTimeout) ([]byte, error) {
-	var err error
-
-	length, err := lengthReader(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -305,73 +173,10 @@ func readHexLength(r io.Reader) (int, error) {
 	return int(length), nil
 }
 
-func readHexLengthWithTimeout(ctx context.Context, r io.Reader) (int, error) {
-	lengthHex := make([]byte, 4)
-
-	buf := make([]byte, 1)
-	n := 0
-
-	for i := 0; i < 4; i++ {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-			nn, err := r.Read(buf)
-			if err != nil {
-				return 0, errIncompleteMessage("length", n, 4)
-			}
-			n += nn
-			lengthHex = append(lengthHex, buf[:n]...)
-		}
-	}
-
-	length, err := strconv.ParseInt(string(lengthHex), 16, 64)
-
-	if err != nil {
-		return 0, errors.WrapErrorf(err, errors.NetworkError, "could not parse hex length %v", lengthHex)
-	}
-
-	// Clip the length to 255, as per the Google implementation.
-	//fmt.Printf("readHexLength, length: %d\n", length)
-	// if length > MaxMessageLength {
-	// 	length = MaxMessageLength
-	// }
-
-	return int(length), nil
-}
-
 // readInt32 reads the next 4 bytes from r as a little-endian integer.
 // Returns an int instead of an int32 to match the lengthReader type.
 func readInt32(r io.Reader) (int, error) {
 	var value int32
 	err := binary.Read(r, binary.LittleEndian, &value)
 	return int(value), err
-}
-
-func readInt32WithTimeout(ctx context.Context, r io.Reader) (int, error) {
-	var value int32
-
-	errChan := make(chan error)
-	resultChan := make(chan int)
-
-	go func() {
-		defer close(errChan)
-		defer close(resultChan)
-
-		err := binary.Read(r, binary.LittleEndian, &value)
-		if err != nil {
-			errChan <- err
-			return
-		}
-		resultChan <- int(value)
-	}()
-
-	select {
-	case result := <-resultChan:
-		return result, nil
-	case err := <-errChan:
-		return 0, err
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	}
 }
