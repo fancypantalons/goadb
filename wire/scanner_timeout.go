@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/fancypantalons/goadb/utils/errors"
 )
@@ -31,17 +32,17 @@ func (s *realScanner) ReadUntilEofWithTimeout(ctx context.Context) ([]byte, erro
 		return
 	}
 
-	return _readWithTimeout(ctx, s.reader, readFn)
+	return _readWithTimeout(ctx, s.reader, false, readFn)
 }
 
-func (s *realScanner) ReadOneLineWithTimeout(ctx context.Context) ([]byte, error) {
+func (s *realScanner) ReadLinesWithTimeout(ctx context.Context) ([]string, error) {
 	readFn := func(reader io.Reader, buf []byte) (n int, err error) {
 		bufr := bufio.NewReader(reader)
 
 		var line []byte
 
-		if line, _, err = bufr.ReadLine(); err == nil {
-			err = io.EOF
+		if line, _, err = bufr.ReadLine(); err != nil {
+			return
 		}
 
 		n = len(line)
@@ -51,7 +52,11 @@ func (s *realScanner) ReadOneLineWithTimeout(ctx context.Context) ([]byte, error
 		return
 	}
 
-	return _readWithTimeout(ctx, s.reader, readFn)
+	if buf, err := _readWithTimeout(ctx, s.reader, true, readFn); err != nil {
+		return nil, err
+	} else {
+		return strings.Split(string(buf), "\n"), nil
+	}
 }
 
 func readStatusFailureAsErrorWithTimeout(ctx context.Context, r io.Reader, req string, messageLengthReader lengthReaderWithTimeout) (string, error) {
@@ -90,7 +95,7 @@ func readMessageWithTimeout(ctx context.Context, r io.Reader, lengthReader lengt
 		return nil, err
 	}
 
-	data, err = _readWithTimeout(ctx, r, _limitedLengthReaderFunction(length, "message data"))
+	data, err = _readWithTimeout(ctx, r, false, _limitedLengthReaderFunction(length, "message data"))
 
 	return data, err
 }
@@ -100,7 +105,7 @@ func readMessageWithTimeout(ctx context.Context, r io.Reader, lengthReader lengt
 func readOctetStringWithTimeout(ctx context.Context, description string, r io.Reader) (string, error) {
 	readFn := _limitedLengthReaderFunction(4, description)
 
-	if octet, err := _readWithTimeout(ctx, r, readFn); err == nil {
+	if octet, err := _readWithTimeout(ctx, r, false, readFn); err == nil {
 		return string(octet), nil
 	} else {
 		return "", err
@@ -116,7 +121,7 @@ func readHexLengthWithTimeout(ctx context.Context, r io.Reader) (int, error) {
 
 	readFn := _limitedLengthReaderFunction(4, "length")
 
-	if buf, err = _readWithTimeout(ctx, r, readFn); err != nil {
+	if buf, err = _readWithTimeout(ctx, r, false, readFn); err != nil {
 		return 0, err
 	}
 
@@ -137,7 +142,7 @@ func readInt32WithTimeout(ctx context.Context, r io.Reader) (int, error) {
 
 	readFn := _limitedLengthReaderFunction(4, "length")
 
-	if buf, err = _readWithTimeout(ctx, r, readFn); err != nil {
+	if buf, err = _readWithTimeout(ctx, r, false, readFn); err != nil {
 		return 0, err
 	} else {
 		return int(binary.LittleEndian.Uint32(buf)), nil
@@ -175,71 +180,61 @@ func _limitedLengthReaderFunction(length int, description string) _readerFunctio
 //
 // The function returns either the last error received from the reader
 // function, or an array of the received bytes.
-func _readWithTimeout(ctx context.Context, r io.Reader, readFn _readerFunction) ([]byte, error) {
-	readChannel := make(chan *ReadResult)
+func _readWithTimeout(ctx context.Context, r io.Reader, partial bool, readFn _readerFunction) ([]byte, error) {
+	var data []byte
 
+	bufferChannel := make(chan *ReadResult)
+
+	// This goroutine is a basic loop that reads buffers until we hit an error,
+	// either EOF or some other.
+	//
+	// How the read is done--as blocks of bytes or as lines--depends on the
+	// supplied reader function.
+	//
+	// This will get aborted if the Context is canceled.
 	go func() {
-		var data []byte
+		defer close(bufferChannel)
 
-		bufferChannel := make(chan *ReadResult)
-
-		// This goroutine is a basic loop that reads buffers until we hit an error,
-		// either EOF or some other.
-		//
-		// How the read is done--as blocks of bytes or as lines--depends on the
-		// supplied reader function.
-		go func() {
-			for {
-				buf := make([]byte, 4096)
-
-				n, e := readFn(r, buf)
-
-				bufferChannel <- &ReadResult{
-					buffer: buf,
-					length: n,
-					err:    e,
-				}
-
-				if e != nil {
-					close(bufferChannel)
-
-					return
-				}
-			}
-		}()
-
-		// Here we loop, reading and accumulating buffers until we either
-		// finish reading, or the timeout triggers.
 		for {
-			select {
-			case <-ctx.Done():
+			buf := make([]byte, 4096)
+
+			n, e := readFn(r, buf)
+
+			bufferChannel <- &ReadResult{
+				buffer: buf,
+				length: n,
+				err:    e,
+			}
+
+			if e != nil {
 				return
-			case result := <-bufferChannel:
-				data = append(data, result.buffer[:result.length]...)
-
-				if result.err != nil {
-					readChannel <- &ReadResult{
-						buffer: data,
-						length: len(data),
-						err:    result.err,
-					}
-
-					close(readChannel)
-
-					return
-				}
 			}
 		}
 	}()
 
-	select {
-	case result := <-readChannel:
-		if result.err == nil || result.err == io.EOF {
-			return result.buffer[:result.length], nil
-		} else {
-			return nil, result.err
+	// Here we loop, reading and accumulating buffers until we either
+	// finish reading, or the timeout triggers.
+	//
+	// If the timeout does happen, we either return the amount we've
+	// read if partial is true, or we return an error indicating the
+	// read was interrupted.
+	for {
+		select {
+		case result := <-bufferChannel:
+			data = append(data, result.buffer[:result.length]...)
+
+			if result.err == io.EOF {
+				return data, nil
+			} else if result.err != nil {
+				return nil, result.err
+			}
+
+		case <-ctx.Done():
+			if partial && len(data) > 0 {
+				return data, nil
+			} else {
+				return nil, errors.WrapErrorf(ctx.Err(), errors.Timeout, "timeout while reading requested data")
+			}
 		}
-	case <-ctx.Done():
-		return nil, errors.WrapErrorf(ctx.Err(), errors.Timeout, "timeout while reading until EOF")
 	}
 }

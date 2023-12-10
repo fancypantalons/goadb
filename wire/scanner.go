@@ -43,6 +43,7 @@ type Scanner interface {
 	ReadMessage() ([]byte, error)
 	ReadUntilEof() ([]byte, error)
 	ReadUntilEofWithTimeout(ctx context.Context) ([]byte, error)
+	ReadLinesWithTimeout(ctx context.Context) ([]string, error)
 
 	NewSyncScanner() SyncScanner
 }
